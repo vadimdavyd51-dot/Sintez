@@ -82,7 +82,13 @@ class Engine:
         from ruaccent import RUAccent
         self.log("Загружаю модель ударений...")
         self.accentizer = RUAccent()
-        self.accentizer.load(omograph_model_size="turbo3.1", use_dictionary=True, tiny_mode=False)
+        ruaccent_dir = os.path.join(os.environ.get("HF_HOME", os.path.join(APP_DIR, "models")), "ruaccent")
+        os.makedirs(ruaccent_dir, exist_ok=True)
+        try:  # модели ударений кладём рядом с остальными, чтобы программа была переносимой
+            self.accentizer.load(omograph_model_size="turbo3.1", use_dictionary=True, tiny_mode=False,
+                                 workdir=ruaccent_dir)
+        except TypeError:
+            self.accentizer.load(omograph_model_size="turbo3.1", use_dictionary=True, tiny_mode=False)
 
         try:
             from f5_tts.infer.utils_infer import transcribe

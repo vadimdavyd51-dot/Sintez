@@ -1,0 +1,113 @@
+name: Собрать полную версию (всё внутри)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Диски
+        shell: pwsh
+        run: Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='UsedGB';e={[int]($_.Used/1GB)}}, @{n='FreeGB';e={[int]($_.Free/1GB)}}
+
+      - name: Python (переносимый) и pip
+        shell: pwsh
+        run: |
+          $b = "C:\rb"
+          New-Item -ItemType Directory -Force "$b\python\Lib\site-packages" | Out-Null
+          Invoke-WebRequest https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip -OutFile "$env:RUNNER_TEMP\py.zip"
+          Expand-Archive "$env:RUNNER_TEMP\py.zip" "$b\python" -Force
+          @("python311.zip", ".", "..", "Lib\site-packages", "import site") | Set-Content "$b\python\python311._pth"
+          Invoke-WebRequest https://bootstrap.pypa.io/get-pip.py -OutFile "$env:RUNNER_TEMP\get-pip.py"
+          & "$b\python\python.exe" "$env:RUNNER_TEMP\get-pip.py" --no-warn-script-location
+          if ($LASTEXITCODE -ne 0) { throw "get-pip" }
+
+      - name: PyTorch для NVIDIA
+        shell: pwsh
+        run: |
+          $py = "C:\rb\python\python.exe"
+          & $py -m pip install --no-cache-dir --no-warn-script-location torch torchaudio --index-url https://download.pytorch.org/whl/cu124
+          if ($LASTEXITCODE -ne 0) { throw "torch" }
+
+      - name: Библиотеки озвучки
+        shell: pwsh
+        run: |
+          $py = "C:\rb\python\python.exe"
+          & $py -m pip install --no-cache-dir --no-warn-script-location f5-tts ruaccent
+          if ($LASTEXITCODE -ne 0) { throw "f5-tts" }
+          & $py -m pip uninstall -y torchvision
+          $v = & $py -c "import torch; print(torch.__version__)"
+          Write-Host "torch: $v"
+          if ($v -notmatch "cu1") {
+            & $py -m pip install --no-cache-dir --force-reinstall --no-deps torch torchaudio --index-url https://download.pytorch.org/whl/cu124
+            if ($LASTEXITCODE -ne 0) { throw "torch reinstall" }
+            $v = & $py -c "import torch; print(torch.__version__)"
+            if ($v -notmatch "cu1") { throw "torch без CUDA: $v" }
+          }
+
+      - name: Программа и модели
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
+          HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+        run: |
+          $b = "C:\rb"
+          Copy-Item app\* $b -Recurse -Force -Exclude run.bat, install.bat, README.txt
+          Copy-Item portable\run.bat, portable\README.txt $b -Force
+          $env:HF_HOME = "$b\models"
+          Set-Location $b
+          & "$b\python\python.exe" engine.py --preload
+          if ($LASTEXITCODE -ne 0) { throw "preload" }
+
+      - name: Самопроверка (озвучка без интернета, на процессоре)
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
+          HF_HUB_OFFLINE: "1"
+        run: |
+          $b = "C:\rb"
+          $env:HF_HOME = "$b\models"
+          Set-Location $b
+          & "$b\python\python.exe" selftest.py
+          if ($LASTEXITCODE -ne 0) { throw "selftest" }
+
+      - name: Уборка и размер
+        shell: pwsh
+        run: |
+          $b = "C:\rb"
+          Remove-Item "$b\selftest.py" -Force -ErrorAction SilentlyContinue
+          Get-ChildItem $b -Recurse -Directory -Filter __pycache__ -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "$b\Озвучка" -Recurse -Force -ErrorAction SilentlyContinue
+          "{0:N1} ГБ" -f ((Get-ChildItem $b -Recurse -File | Measure-Object Length -Sum).Sum / 1GB)
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='FreeGB';e={[int]($_.Free/1GB)}}
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup не установился" }
+
+      - name: Собрать установщик
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DBuildDir=C:\rb /O"$env:GITHUB_WORKSPACE\out" installer\rasskazchik-full.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC $LASTEXITCODE" }
+          Get-ChildItem "$env:GITHUB_WORKSPACE\out" | Select-Object Name, @{n='MB';e={[int]($_.Length/1MB)}}
+
+      - name: Выложить в релиз «full»
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: full
+          name: Рассказчик, полная версия (всё внутри)
+          files: out/*
+          body: |
+            Скачай ВСЕ файлы этого релиза в одну папку (Rasskazchik-Full-Setup.exe и Rasskazchik-Full-Setup-1.bin, -2.bin ...), потом запусти Rasskazchik-Full-Setup.exe.
+            Всё уже внутри: Python, библиотеки и модели, интернет не нужен. Нужна видеокарта NVIDIA.
