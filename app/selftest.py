@@ -13,5 +13,6 @@ final = e.run(text, {"project": "selftest", "nfe": 16, "check": True, "check_tri
 assert final and os.path.getsize(final) > 100_000, "итоговый файл не создан"
 assert any("Проверка озвучки на слух: включена" in l for l in logs), "проверка на слух не включилась"
 assert any("основной, напряжённый, тихий" in l for l in logs), "образцы голоса не подключились"
+size = os.path.getsize(final)
 shutil.rmtree(os.path.join(OUT_ROOT, "selftest"), ignore_errors=True)
-print("SELFTEST OK", os.path.getsize(final), "байт")
+print("SELFTEST OK", size, "байт")
