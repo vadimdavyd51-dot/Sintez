@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Рассказчик у камина</title>
+<style>
+  :root { --bg:#16110e; --panel:#211913; --line:#3a2c20; --text:#efe6da; --mute:#a8978a; --accent:#e0873a; --ok:#6fbf73; --bad:#e2635c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--mute); margin-bottom: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  h2 { font-size: 16px; margin: 0 0 10px; color: var(--accent); }
+  textarea { width: 100%; min-height: 260px; background: #120d0a; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font: inherit; resize: vertical; }
+  label { display: block; color: var(--mute); font-size: 14px; margin-bottom: 4px; }
+  input[type=text], input[type=number], select { width: 100%; background: #120d0a; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+  .chk { display: flex; gap: 8px; align-items: center; color: var(--text); font-size: 15px; margin-top: 22px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button { background: var(--accent); color: #1a120b; border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.sec { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .4; cursor: default; }
+  .parts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .part { font-size: 13px; padding: 4px 9px; border-radius: 6px; border: 1px solid var(--line); color: var(--mute); }
+  .part.done { color: var(--ok); border-color: var(--ok); }
+  .part.work { color: var(--accent); border-color: var(--accent); }
+  .part.fail { color: var(--bad); border-color: var(--bad); }
+  .bar { height: 10px; background: #120d0a; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+  pre { background: #120d0a; border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 280px; overflow: auto; font: 13px/1.45 Consolas, monospace; white-space: pre-wrap; margin: 0; }
+  .hint { color: var(--mute); font-size: 13px; margin-top: 6px; }
+  audio { width: 100%; margin-top: 10px; }
+  .err { color: var(--bad); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Рассказчик у камина</h1>
+  <div class="sub">Озвучка хоррор-историй твоим голосом. Всё работает на этом компьютере.</div>
+
+  <div class="card">
+    <h2>1. Текст</h2>
+    <div class="row" style="margin-bottom:10px">
+      <input type="file" id="file" accept=".txt" style="display:none">
+      <button class="sec" onclick="document.getElementById('file').click()">Открыть файл .txt</button>
+      <span class="hint" id="fname">или вставь текст сценария ниже</span>
+    </div>
+    <textarea id="text" placeholder="Вставь сюда сценарий. Каждая строка читается отдельной фразой, пустая строка даёт длинную паузу. Части определяются по строкам «ЧАСТЬ 1», «ЧАСТЬ 2»..."></textarea>
+  </div>
+
+  <div class="card">
+    <h2>2. Настройки</h2>
+    <div class="grid">
+      <div><label>Название проекта (папка с результатом)</label><input type="text" id="project"></div>
+      <div><label>Стиль звука</label>
+        <select id="preset">
+          <option value="подкаст">подкаст: чистый голос</option>
+          <option value="рассказчик">рассказчик: чуть ниже, лёгкая гулкость</option>
+          <option value="лёгкий">лёгкий хоррор</option>
+          <option value="жуткий">жуткий</option>
+          <option value="подвал">подвал</option>
+        </select></div>
+      <div><label>Скорость речи (0.85 медленнее, 1.0 обычная)</label><input type="number" id="speed" step="0.05" min="0.6" max="1.3"></div>
+      <div><label>Длина пауз (1.0 как есть, 0.7 короче)</label><input type="number" id="pause_scale" step="0.1" min="0.3" max="2"></div>
+      <div><label>Пропустить первых строк (название, подзаголовок)</label><input type="number" id="skip_first" min="0" max="20"></div>
+      <div><label>Зерно (меняет интонацию)</label><input type="number" id="seed" min="0"></div>
+      <label class="chk"><input type="checkbox" id="check"> Проверять каждый кусок на слух</label>
+      <label class="chk"><input type="checkbox" id="line_breaks"> Пауза на каждом переносе строки</label>
+      <label class="chk"><input type="checkbox" id="read_headings"> Озвучивать заголовки «ЧАСТЬ…»</label>
+      <label class="chk"><input type="checkbox" id="use_extra_voices"> Менять интонацию по смыслу (все образцы)</label>
+    </div>
+    <div class="hint">Если текст или настройки поменялись, готовые части старого запуска удаляются автоматически. Если не менялись, озвучка продолжится с того места, где остановилась.</div>
+  </div>
+
+  <div class="card">
+    <h2>3. Озвучка</h2>
+    <div class="row">
+      <button id="start" onclick="startJob()">Озвучить</button>
+      <button id="stop" class="sec" onclick="stopJob()" disabled>Остановить</button>
+      <button class="sec" onclick="openFolder()">Открыть папку с результатом</button>
+    </div>
+    <div class="err" id="err"></div>
+    <div style="margin-top:14px" class="bar"><div id="bar"></div></div>
+    <div class="hint" id="state">Ожидание</div>
+    <div class="parts" id="parts"></div>
+    <div id="result"></div>
+    <h2 style="margin-top:16px">Ход работы</h2>
+    <pre id="log"></pre>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const FIELDS = ["project","preset","speed","pause_scale","skip_first","seed"];
+const CHECKS = ["check","line_breaks","read_headings","use_extra_voices"];
+
+function lsGet(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : v; } catch(e){ return d; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+
+async function init(){
+  const d = await (await fetch("/defaults")).json();
+  FIELDS.forEach(f => $(f).value = lsGet("f_"+f, d[f]));
+  CHECKS.forEach(f => { const v = lsGet("c_"+f, null); $(f).checked = v === null ? !!d[f] : v === "1"; });
+  $("text").value = lsGet("text", "");
+  setInterval(poll, 1200); poll();
+}
+
+function settings(){
+  const s = {};
+  FIELDS.forEach(f => { s[f] = $(f).type === "number" ? Number($(f).value) : $(f).value; lsSet("f_"+f, $(f).value); });
+  CHECKS.forEach(f => { s[f] = $(f).checked; lsSet("c_"+f, $(f).checked ? "1" : "0"); });
+  return s;
+}
+
+$("file").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const buf = await f.arrayBuffer();
+  let t;
+  try { t = new TextDecoder("utf-8", {fatal:true}).decode(buf); }
+  catch(err){ t = new TextDecoder("windows-1251").decode(buf); }
+  $("text").value = t.replace(/^﻿/, "");
+  $("fname").textContent = f.name + ", знаков: " + t.length;
+});
+
+async function startJob(){
+  $("err").textContent = "";
+  const text = $("text").value;
+  lsSet("text", text);
+  const r = await fetch("/start", {method:"POST", body: JSON.stringify({text, settings: settings()})});
+  const j = await r.json();
+  if (!j.ok) $("err").textContent = j.error || "Не удалось начать";
+  poll();
+}
+async function stopJob(){ await fetch("/stop", {method:"POST", body:"{}"}); }
+async function openFolder(){
+  const r = await fetch("/open", {method:"POST", body: JSON.stringify({project: $("project").value})});
+  const j = await r.json();
+  if (j.folder) $("err").textContent = "";
+}
+
+async function poll(){
+  let s; try { s = await (await fetch("/status")).json(); } catch(e){ return; }
+  $("start").disabled = s.running; $("stop").disabled = !s.running;
+  const total = s.parts.length, done = s.parts.filter(p => p.state === "done").length;
+  let frac = total ? done / total : 0;
+  if (s.running && s.chunk && total){
+    frac += (s.chunk.k / s.chunk.of) / total;
+  }
+  $("bar").style.width = Math.min(100, frac * 100) + "%";
+  $("state").textContent = s.running
+    ? `Идёт озвучка: готово частей ${done} из ${total}` + (s.chunk ? `, часть ${s.chunk.n}: кусок ${s.chunk.k} из ${s.chunk.of}` : "")
+    : (s.final ? "Готово" : (total ? `Остановлено: готово частей ${done} из ${total}` : "Ожидание"));
+  $("parts").innerHTML = s.parts.map(p => `<span class="part ${p.state}" title="${p.title}">${p.n}. ${p.title.length > 28 ? p.title.slice(0,28)+"…" : p.title}</span>`).join("");
+  const lg = $("log"), atEnd = lg.scrollTop + lg.clientHeight >= lg.scrollHeight - 30;
+  lg.textContent = s.log.join("\n"); if (atEnd) lg.scrollTop = lg.scrollHeight;
+  if (s.error) $("err").textContent = s.error;
+  if (s.final && !s.running){
+    const url = "/file/" + s.final.split("/").map(encodeURIComponent).join("/");
+    if ($("result").dataset.url !== url){
+      $("result").dataset.url = url;
+      $("result").innerHTML = `<h2 style="margin-top:16px">Готовый файл</h2><audio controls src="${url}?t=${Date.now()}"></audio>
+        <div class="hint"><a style="color:var(--accent)" href="${url}" download>Скачать</a>. Файл лежит в папке «Озвучка» рядом с программой.</div>`;
+    }
+  } else if (s.running) { $("result").innerHTML = ""; $("result").dataset.url = ""; }
+}
+init();
+</script>
+</body>
+</html>

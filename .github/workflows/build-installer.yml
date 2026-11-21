@@ -1,0 +1,44 @@
+name: Собрать установщик
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup не установился" }
+
+      - name: Собрать Rasskazchik-Setup.exe
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\rasskazchik.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC завершился с ошибкой $LASTEXITCODE" }
+          Get-Item installer\Output\Rasskazchik-Setup.exe | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rasskazchik-Setup
+          path: installer/Output/Rasskazchik-Setup.exe
+
+      - name: Выложить в релиз «latest»
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Рассказчик (последняя версия)
+          make_latest: true
+          files: installer/Output/Rasskazchik-Setup.exe
+          body: |
+            Скачай **Rasskazchik-Setup.exe**, запусти и дождись окончания установки (15-30 минут, нужен интернет и видеокарта NVIDIA).
