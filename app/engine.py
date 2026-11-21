@@ -90,13 +90,38 @@ class Engine:
         except TypeError:
             self.accentizer.load(omograph_model_size="turbo3.1", use_dictionary=True, tiny_mode=False)
 
-        try:
-            from f5_tts.infer.utils_infer import transcribe
-            self.transcribe = transcribe
-        except Exception:
-            self.transcribe = None
+        self.transcribe = self._make_transcribe()
         self.loaded = True
         self.log("Модели загружены.")
+
+    def _make_transcribe(self):
+        """Распознавание речи для проверки на слух. Читает wav сам и отдаёт модели готовый звук:
+        так не нужна программа ffmpeg, которой на обычном Windows нет."""
+        try:
+            from f5_tts.infer import utils_infer as U
+            from scipy.signal import resample_poly
+        except Exception as e:
+            self.log(f"Распознавание речи недоступно: {e}")
+            return None
+
+        def tr(path, language="russian"):
+            if getattr(U, "asr_pipe", None) is None:
+                U.initialize_asr_pipeline()
+            sr, data = wavfile.read(path)
+            data = data.astype(np.float32)
+            if data.ndim > 1:
+                data = data.mean(axis=1)
+            if data.dtype != np.float32 or np.abs(data).max() > 1.5:
+                data = data / 32768.0
+            if sr != 16000:
+                from math import gcd
+                g = gcd(int(sr), 16000)
+                data = resample_poly(data, 16000 // g, int(sr) // g).astype(np.float32)
+            out = U.asr_pipe({"raw": data, "sampling_rate": 16000}, chunk_length_s=15, batch_size=1,
+                             generate_kwargs={"task": "transcribe", "language": language},
+                             return_timestamps=False)
+            return out["text"]
+        return tr
 
     def preload_asr(self):
         """Скачивает модель распознавания заранее (для проверки на слух)."""
